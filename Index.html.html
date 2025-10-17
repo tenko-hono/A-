@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>議会シミュレーション (ファイル実行版)</title>
+    <style>
+        :root { --header-height: 50px; --footer-height: 60px; }
+        html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; -webkit-text-size-adjust: 100%; }
+        body { background-color: #f0f2f5; }
+        #game-container { display: flex; flex-direction: column; height: 100%; }
+        #game-header { height: var(--header-height); background-color: #343a40; color: white; display: flex; align-items: center; justify-content: center; font-size: 1.2em; font-weight: bold; flex-shrink: 0; }
+        #main-content { flex: 1; overflow-y: auto; padding: 20px; }
+        #bottom-bar { height: var(--footer-height); background-color: #ffffff; box-shadow: 0 -2px 10px rgba(0,0,0,0.1); display: flex; justify-content: space-around; align-items: center; flex-shrink: 0; }
+        .action-button { background: none; border: none; font-size: 24px; cursor: pointer; color: #555; padding: 10px 20px; -webkit-tap-highlight-color: transparent; }
+        #sidebar-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5); z-index: 100; transition: opacity 0.3s; }
+        #sidebar { position: fixed; top: 0; right: -95%; width: 90%; max-width: 400px; height: 100%; background-color: #fff; box-shadow: -2px 0 10px rgba(0,0,0,0.2); z-index: 101; transition: right 0.3s; display: flex; flex-direction: column; }
+        #sidebar.visible { right: 0; }
+        #sidebar-content { padding: 20px; overflow-y: auto; flex-grow: 1; }
+        #sidebar-content h3 { margin-top: 0; }
+        #sidebar-content input, #sidebar-content textarea { width: 100%; padding: 8px; margin-bottom: 10px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; font-size: 16px; }
+        #sidebar-content label { font-weight: bold; display: block; margin-top: 10px; margin-bottom: 5px; }
+        #submit-bill-btn { background-color: #28a745; color: white; width: 100%; padding: 12px; border: none; border-radius: 6px; font-size: 1em; font-weight: bold; }
+        h1, h2 { color: #333; border-bottom: 2px solid #007bff; padding-bottom: 10px; margin: 20px 0 10px 0; }
+        .tabs { display: flex; border-bottom: 1px solid #ccc; margin-bottom: 20px; }
+        .tab-button { padding: 10px 20px; cursor: pointer; background-color: #f1f1f1; border: 1px solid #ccc; border-bottom: none; border-radius: 6px 6px 0 0; margin-right: 5px; -webkit-tap-highlight-color: transparent; }
+        .tab-button.active { background-color: #fff; border-bottom: 1px solid #fff; }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+        #country-stats { padding: 15px; border: 1px solid #ddd; border-radius: 8px; margin-bottom: 20px; background-color: #f9f9f9; }
+        .stat-bar-label { display: flex; justify-content: space-between; font-weight: bold; }
+        .progress-bar-bg { background-color: #e9ecef; border-radius: 5px; height: 20px; overflow: hidden; margin-top: 5px; }
+        .progress-bar-fill { height: 100%; transition: width 0.5s ease-in-out; }
+        #liberty-bar { background-color: #007bff; } #equality-bar { background-color: #28a745; } #happiness-bar { background-color: #ffc107; }
+        #parliament-grid { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; padding: 10px; }
+        .politician-viz { width: 40px; text-align: center; }
+        .party-circle { width: 40px; height: 40px; border-radius: 50%; margin: 0 auto; }
+        .vote-square { width: 25px; height: 25px; margin: 5px auto 0 auto; border: 1px solid rgba(0,0,0,0.1); }
+        .party-conservative { background-color: #007bff; } .party-liberal { background-color: #dc3545; } .party-centrist { background-color: #ffc107; } .party-fascist { background-color: #343a40; }
+        .vote-aye { background-color: #28a745; } .vote-nay { background-color: #dc3545; } .vote-abstain { background-color: #ffc107; } .vote-neutral { background-color: #ccc; }
+        .bill-card { border: 1px solid #ddd; border-radius: 8px; padding: 20px; margin-bottom: 20px; background-color: #f9f9f9; }
+        button { cursor: pointer; }
+        #results-container .result { border: 1px solid #ced4da; background-color: #f8f9fa; border-radius: 8px; padding: 15px; margin-top: 15px; white-space: pre-wrap; font-family: "Courier New", Courier, monospace; }
+        .hidden { display: none !important; }
+        #error-display { background-color: #ffdddd; border: 2px solid red; color: red; padding: 20px; margin: 20px; white-space: pre-wrap; font-family: monospace; }
+    </style>
+</head>
+<body>
+    <div id="game-container">
+        <header id="game-header"></header>
+        <div id="main-content">
+            <div class="tabs">
+                <button id="tab-sim" class="tab-button active">シミュレーション</button>
+                <button id="tab-parliament" class="tab-button">議会</button>
+            </div>
+            <div id="simulation-view" class="tab-content active">
+                <h2>国家の状態</h2><div id="country-stats"></div>
+                <h2>議会構成</h2><div id="parliament-info"></div>
+                <hr><h2>法案一覧</h2><div id="bills-container"></div>
+                <hr><h2>投票結果</h2><div id="results-container"></div>
+            </div>
+            <div id="parliament-view" class="tab-content">
+                <h2>議会の投票状況</h2><p>法案に投票すると、各議員の投票行動がここに表示されます。</p>
+                <div id="parliament-grid"></div>
+            </div>
+        </div>
+        <footer id="bottom-bar">
+            <button class="action-button" id="action-no-confidence" title="不信任案提出">✖️</button>
+            <button class="action-button" id="action-write-bill" title="法案を書く">✎</button>
+            <button class="action-button" id="action-start-vote" title="投票開始">✔️</button>
+            <button class="action-button" id="action-repeal-vote" title="削除投票">🗑️</button>
+        </footer>
+    </div>
+    <div id="sidebar-overlay" class="hidden"></div>
+    <aside id="sidebar">
+        <div id="sidebar-content">
+            <h3>法案作成</h3>
+            <label for="bill-name">法案名</label><input type="text" id="bill-name" placeholder="例: 国民健康保険法案">
+            <label for="bill-desc">説明</label><textarea id="bill-desc" rows="3" placeholder="例: 全国民に基本的な医療を提供する。"></textarea>
+            <label>国家への効果</label>
+            自由: <input type="number" id="effect-liberty" value="0"> 平等: <input type="number" id="effect-equality" value="0">
+            <label>各党の賛成率 (%)</label>
+            保守党: <input type="number" id="support-conservative" value="50" min="0" max="100">
+            リベラル党: <input type="number" id="support-liberal" value="50" min="0" max="100">
+            改進党: <input type="number" id="support-centrist" value="50" min="0" max="100">
+            ファシズム党: <input type="number" id="support-fascist" value="50" min="0" max="100">
+            <button id="submit-bill-btn">法案を提出する</button>
+        </div>
+    </aside>
+
+    <script>
+    // ▼▼▼ 自己診断モード ▼▼▼
+    try {
+        // === ページ読み込み完了時に実行 ===
+        document.addEventListener('DOMContentLoaded', function() {
+            'use strict';
+
+            // --- ゲームの状態変数 ---
+            let currentYear = 2025;
+            let currentMonth = 1;
+            
+            // --- クラス定義 (ブラウザ向けに再構築) ---
+            class Politician { constructor(party, ideology) { this.party = party; this.ideology = ideology; this.id = politicians.length; } }
+            class Party { constructor(name, ideology, cssClass) { this.name = name; this.ideology = ideology; this.cssClass = cssClass; this.members = []; } addMember(p) { this.members.push(p); } }
+            class CountryState { constructor(l, e) { this.liberty = l; this.equality = e; this.calculateHappiness(); } calculateHappiness() { const b = (this.liberty + this.equality) / 2; const p = Math.abs(this.liberty - this.equality) * 0.5; this.happiness = Math.max(0, Math.min(100, b - p)); } applyBillEffects(e) { this.liberty = Math.max(0, Math.min(100, this.liberty + (e.liberty || 0))); this.equality = Math.max(0, Math.min(100, this.equality + (e.equality || 0))); this.calculateHappiness(); } }
+            class Bill { constructor(name, desc, support, abstain, effects) { this.name = name; this.description = desc; this.supportRates = support; this.abstainRates = abstain; this.effects = effects; } }
+            class Parliament { constructor(m) { this.members = m; } holdVote(b) { return this.members.map(m => { const sC = b.supportRates[m.ideology] || 0; const aC = b.abstainRates[m.ideology] || 0; const r = Math.random(); let vote; if (r < sC) { vote = 'aye'; } else if (r < sC + aC) { vote = 'abstain'; } else { vote = 'nay'; } return { politician: m, vote: vote }; }); } }
+
+            // --- ゲームの初期化 ---
+            const politicians = [];
+            const country = new CountryState(50, 50);
+            const parties = [ new Party("保守党", "conservative", "party-conservative"), new Party("リベラル党", "liberal", "party-liberal"), new Party("改進党", "centrist", "party-centrist"), new Party("ファシズム党", "fascist", "party-fascist") ];
+            const partyDistribution = [30, 30, 20, 20];
+            parties.forEach((party, index) => { for (let i = 0; i < partyDistribution[index]; i++) { const p = new Politician(party, party.ideology); politicians.push(p); party.addMember(p); } });
+            const parliament = new Parliament(politicians);
+            let bills = [
+                new Bill("富裕層減税法案", "所得税の最高税率を引き下げる。", { conservative: 0.8, liberal: 0.1, centrist: 0.4, fascist: 0.6 }, { conservative: 0.15, liberal: 0.2, centrist: 0.5, fascist: 0.3 }, { liberty: 5, equality: -10 }),
+                new Bill("環境保護強化法案", "企業の排出規制を強化する。", { conservative: 0.2, liberal: 0.85, centrist: 0.65, fascist: 0.1 }, { conservative: 0.4, liberal: 0.1, centrist: 0.25, fascist: 0.2 }, { liberty: -5, equality: 5 })
+            ];
+
+            // --- DOM要素の取得 ---
+            const dom = {
+                header: document.getElementById('game-header'),
+                simTabBtn: document.getElementById('tab-sim'),
+                simTabView: document.getElementById('simulation-view'),
+                parliamentTabBtn: document.getElementById('tab-parliament'),
+                parliamentTabView: document.getElementById('parliament-view'),
+                statsContainer: document.getElementById('country-stats'),
+                parliamentInfo: document.getElementById('parliament-info'),
+                billsContainer: document.getElementById('bills-container'),
+                resultsContainer: document.getElementById('results-container'),
+                parliamentGrid: document.getElementById('parliament-grid'),
+                sidebar: document.getElementById('sidebar'),
+                sidebarOverlay: document.getElementById('sidebar-overlay'),
+                writeBillBtn: document.getElementById('action-write-bill'),
+                submitBillBtn: document.getElementById('submit-bill-btn')
+            };
+
+            // --- UI更新関数 ---
+            const updateTimeline = () => { dom.header.textContent = `${currentYear}年 ${currentMonth}月`; };
+            const updateStatsUI = () => { dom.statsContainer.innerHTML = `<div><div class="stat-bar-label"><span>自由</span><span>${Math.round(country.liberty)}</span></div><div class="progress-bar-bg"><div id="liberty-bar" class="progress-bar-fill" style="width:${country.liberty}%;"></div></div></div><div><div class="stat-bar-label"><span>平等</span><span>${Math.round(country.equality)}</span></div><div class="progress-bar-bg"><div id="equality-bar" class="progress-bar-fill" style="width:${country.equality}%;"></div></div></div><div><div class="stat-bar-label"><span>幸福度</span><span>${Math.round(country.happiness)}</span></div><div class="progress-bar-bg"><div id="happiness-bar" class="progress-bar-fill" style="width:${country.happiness}%;"></div></div></div>`; };
+            const updateParliamentView = (votes) => { votes.forEach(v => { const sq = document.querySelector(`#politician-viz-${v.politician.id} .vote-square`); if (sq) sq.className = `vote-square vote-${v.vote}`; }); };
+
+            function renderBills() {
+                dom.billsContainer.innerHTML = '';
+                bills.forEach((bill, index) => {
+                    const effectLib = bill.effects.liberty >= 0 ? '+' + bill.effects.liberty : bill.effects.liberty;
+                    const effectEq = bill.effects.equality >= 0 ? '+' + bill.effects.equality : bill.effects.equality;
+                    const card = document.createElement('div');
+                    card.className = 'bill-card';
+                    card.innerHTML = `<h3>${bill.name}</h3><p>${bill.description}<br>（効果: 自由${effectLib}, 平等${effectEq}）</p><button class="vote-button" data-bill-index="${index}">投票する</button>`;
+                    dom.billsContainer.appendChild(card);
+                });
+            }
+            const toggleSidebar = (visible) => { dom.sidebar.classList.toggle('visible', visible); dom.sidebarOverlay.classList.toggle('hidden', !visible); };
+
+            // --- 初期表示 ---
+            updateTimeline();
+            updateStatsUI();
+            dom.parliamentInfo.innerHTML = `<p><strong>総議員数:</strong> ${politicians.length}名</p>` + parties.map(p => `<p><strong>${p.name}:</strong> ${p.members.length}名</p>`).join('');
+            dom.parliamentGrid.innerHTML = politicians.map(p => `<div class="politician-viz" id="politician-viz-${p.id}"><div class="party-circle ${p.party.cssClass}"></div><div class="vote-square vote-neutral"></div></div>`).join('');
+            renderBills();
+            
+            // --- イベントリスナー ---
+            // タブ
+            dom.simTabBtn.addEventListener('click', () => { dom.simTabView.classList.add('active'); dom.simTabBtn.classList.add('active'); dom.parliamentTabView.classList.remove('active'); dom.parliamentTabBtn.classList.remove('active'); });
+            dom.parliamentTabBtn.addEventListener('click', () => { dom.parliamentTabView.classList.add('active'); dom.parliamentTabBtn.classList.add('active'); dom.simTabView.classList.remove('active'); dom.simTabBtn.classList.remove('active'); });
+
+            // 投票 (イベント委任)
+            dom.billsContainer.addEventListener('click', function(event) {
+                if (!event.target.classList.contains('vote-button')) return;
+                const billIndex = event.target.dataset.billIndex;
+                const selectedBill = bills[billIndex];
+                const individualVotes = parliament.holdVote(selectedBill);
+                const ayes = individualVotes.filter(v => v.vote === 'aye').length, nays = individualVotes.filter(v => v.vote === 'nay').length, abstains = individualVotes.filter(v => v.vote === 'abstain').length;
+                const passed = ayes > nays;
+
+                if (passed) { country.applyBillEffects(selectedBill.effects); updateStatsUI(); }
+                updateParliamentView(individualVotes);
+                
+                const resultDiv = document.createElement('div');
+                resultDiv.className = 'result';
+                resultDiv.innerText = `--- 投票結果: ${selectedBill.name} ---\n  賛成: ${ayes}, 反対: ${nays}, 棄権: ${abstains}\n  結果: ${passed ? '可決' : '否決'}`;
+                dom.resultsContainer.prepend(resultDiv);
+                
+                dom.parliamentTabBtn.click();
+                currentMonth++; if (currentMonth > 12) { currentMonth = 1; currentYear++; }
+                updateTimeline();
+            });
+            
+            // サイドバー
+            dom.writeBillBtn.addEventListener('click', () => toggleSidebar(true));
+            dom.sidebarOverlay.addEventListener('click', () => toggleSidebar(false));
+            dom.submitBillBtn.addEventListener('click', () => {
+                const newBill = new Bill(
+                    document.getElementById('bill-name').value || "名称未設定", document.getElementById('bill-desc').value || "説明なし",
+                    { conservative: parseInt(document.getElementById('support-conservative').value)/100, liberal: parseInt(document.getElementById('support-liberal').value)/100, centrist: parseInt(document.getElementById('support-centrist').value)/100, fascist: parseInt(document.getElementById('support-fascist').value)/100 }, {},
+                    { liberty: parseInt(document.getElementById('effect-liberty').value), equality: parseInt(document.getElementById('effect-equality').value) }
+                );
+                bills.push(newBill);
+                renderBills();
+                toggleSidebar(false);
+                currentMonth++; if (currentMonth > 12) { currentMonth = 1; currentYear++; }
+                updateTimeline();
+            });
+
+            // 未実装ボタン
+            ['action-no-confidence', 'action-start-vote', 'action-repeal-vote'].forEach(id => { document.getElementById(id).addEventListener('click', () => alert('この機能はまだ実装されていません。')); });
+        });
+    } catch (error) {
+        // ▼▼▼ エラーが発生したら、ここに表示する ▼▼▼
+        document.body.innerHTML = `<div id="error-display"><h1>エラーが発生しました</h1><p>問題の解決にご協力ください。以下のエラー内容を開発者にお知らせください。</p><hr><strong>エラー名:</strong> ${error.name}<br><strong>メッセージ:</strong> ${error.message}<br><hr><strong>詳細:</strong><br>${error.stack}</div>`;
+    }
+    </script>
+</body>
+</html>
